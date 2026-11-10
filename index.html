@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETL Exercise</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #0b1120;
+            color: #e5eaf5;
+            font-synthesis: none;
+            text-rendering: optimizeLegibility;
+            -webkit-font-smoothing: antialiased;
+        }
+        * { box-sizing: border-box; }
+        body {
+            width: min(100% - 40px, 800px);
+            margin: 48px auto;
+            padding: 36px;
+            color: #e5eaf5;
+            background: #111a2e;
+            border: 1px solid #26334c;
+            border-radius: 20px;
+            box-shadow: 0 24px 70px #0005;
+        }
+        h1 { font-size: clamp(24px, 4vw, 32px); margin: 0 0 6px; letter-spacing: -0.04em; }
+        h2 { color: #9aa9c3; font-size: 15px; font-weight: 400; margin: 0 0 38px; }
+        h3 { font-size: 26px; margin: 0 0 24px; letter-spacing: -0.03em; }
+        h4 { font-size: 17px; margin: 28px 0 14px; }
+        .form-group { margin-bottom: 18px; font-size: 15px; }
+        .form-group label { display: block; margin-bottom: 10px; font-weight: 600; }
+        input[type="file"] {
+            width: 100%;
+            max-width: 500px;
+            padding: 10px;
+            color: #cbd5e1;
+            background: #0b1120;
+            border: 1px solid #34435e;
+            border-radius: 10px;
+            font: inherit;
+            font-size: 13px;
+        }
+        input[type="file"]::file-selector-button {
+            margin-right: 12px;
+            padding: 8px 12px;
+            color: #eaf2ff;
+            background: #243552;
+            border: 0;
+            border-radius: 7px;
+            font: inherit;
+            cursor: pointer;
+        }
+        button {
+            margin: 4px 0 14px;
+            padding: 11px 18px;
+            color: #071321;
+            background: #65d6ad;
+            border: 0;
+            border-radius: 9px;
+            font: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            cursor: pointer;
+            transition: background-color 150ms ease, transform 150ms ease;
+        }
+        button:hover { background: #82e6c1; transform: translateY(-1px); }
+        button:focus-visible, input:focus-visible { outline: 3px solid #65d6ad; outline-offset: 3px; }
+        pre {
+            min-height: 90px;
+            max-height: 500px;
+            margin: 0;
+            padding: 18px;
+            overflow: auto;
+            color: #c8d6ec;
+            background: #0b1120;
+            border: 1px solid #26334c;
+            border-radius: 12px;
+            font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .helper-text { margin: 0 0 20px; color: #9aa9c3; font-size: 14px; }
+        .note { margin-top: 9px; color: #8d9bb4; font-size: 13px; }
+        @media (max-width: 560px) {
+            body { width: min(100% - 24px, 800px); margin: 18px auto; padding: 24px 20px; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Marie Ariana Alexi B. Guial</h1>
+    <h2>IT 3206N [TTH 6:00 PM - 8:30 PM]</h2>
+
+    <h3>ETL Exercise</h3>
+
+    <h4>1. Upload Source CSV Files</h4>
+
+    <div class="form-group">
+        <label>Select all 3 CSV files at once (SIS, LMS, Accounting):</label>
+        <input type="file" id="csvFiles" accept=".csv" multiple />
+        <div class="note">Hold Ctrl (or Cmd) to select multiple files, or drag and drop them together.</div>
+    </div>
+
+    <button onclick="runETL()">RUN ETL</button>
+
+    <div class="helper-text">Upload the three CSV files and click RUN ETL.</div>
+
+    <h4>2. JSON Output</h4>
+
+    <pre id="jsonOutput">Upload the CSV files and click RUN ETL.</pre>
+
+    <script>
+        // Helper to parse CSV with quotes
+        function parseCSV(text) {
+            const rows = [];
+            let currentRow = [];
+            let currentField = '';
+            let inQuotes = false;
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const nextChar = text[i + 1];
+                if (inQuotes) {
+                    if (char === '"' && nextChar === '"') { currentField += '"'; i++; }
+                    else if (char === '"') { inQuotes = false; }
+                    else { currentField += char; }
+                } else {
+                    if (char === '"') { inQuotes = true; }
+                    else if (char === ',') { currentRow.push(currentField); currentField = ''; }
+                    else if (char === '\n' || char === '\r') {
+                        if (currentField !== '' || currentRow.length > 0) {
+                            currentRow.push(currentField); rows.push(currentRow); currentRow = []; currentField = '';
+                        }
+                        if (char === '\r' && nextChar === '\n') i++;
+                    } else { currentField += char; }
+                }
+            }
+            if (currentField !== '' || currentRow.length > 0) { currentRow.push(currentField); rows.push(currentRow); }
+            return rows;
+        }
+
+        function readFileAsync(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.onerror = e => reject(e);
+                reader.readAsText(file);
+            });
+        }
+
+        function csvToObjects(text) {
+            const rows = parseCSV(text).filter(row => row.length > 1 || row[0].trim() !== '');
+            if (rows.length < 2) return [];
+            const headers = rows[0].map(h => h.trim());
+            return rows.slice(1).map(row => {
+                const obj = {};
+                headers.forEach((header, i) => { obj[header] = row[i] ? row[i].trim() : ''; });
+                return obj;
+            });
+        }
+
+        function toTitleCase(str) {
+            return str.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+        }
+
+        async function runETL() {
+            const fileInput = document.getElementById('csvFiles');
+            const files = fileInput.files;
+
+            if (files.length < 3) {
+                alert("Please select all three CSV files before running.");
+                return;
+            }
+
+            try {
+                let sisData = [], lmsData = [], accData = [];
+
+                // Loop through the uploaded files and identify them by filename
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    const text = await readFileAsync(file);
+                    const parsed = csvToObjects(text);
+                    
+                    // Detect which file it is based on the filename
+                    const name = file.name.toLowerCase();
+                    
+                    if (name.includes('sis') || name.includes('source_a')) {
+                        sisData = parsed;
+                    } else if (name.includes('lms') || name.includes('source_b')) {
+                        lmsData = parsed;
+                    } else if (name.includes('acc') || name.includes('source_c') || name.includes('accounting')) {
+                        accData = parsed;
+                    } else {
+                        // Fallback: guess by columns if filename is weird
+                        if (parsed.length > 0) {
+                            if ('student_name' in parsed[0]) sisData = parsed;
+                            else if ('final_grade' in parsed[0]) lmsData = parsed;
+                            else if ('account_balance' in parsed[0]) accData = parsed;
+                        }
+                    }
+                }
+
+                // Validate that we found all 3
+                if (sisData.length === 0 || lmsData.length === 0 || accData.length === 0) {
+                    alert("Could not identify all 3 files. Please make sure the filenames contain 'SIS', 'LMS', and 'Accounting' (or 'Source A', 'Source B', 'Source C').");
+                    return;
+                }
+
+                const programMap = {
+                    "BSIT": "Bachelor of Science in Information Technology",
+                    "BSCS": "Bachelor of Science in Computer Science",
+                    "BSIS": "Bachelor of Science in Information Systems"
+                };
+
+                // TRANSFORM & JOIN
+                const finalJSON = sisData.map(sisRow => {
+                    const studentIdStr = String(parseInt(sisRow.student_id));
+                    
+                    const lmsRow = lmsData.find(r => String(parseInt(r.student_id)) === studentIdStr) || {};
+                    const accRow = accData.find(r => String(parseInt(r.student_id)) === studentIdStr) || {};
+
+                    const rawProgram = sisRow.program_code ? sisRow.program_code.trim().toUpperCase() : '';
+                    const fullProgram = programMap[rawProgram] || rawProgram;
+
+                    let finalGrade = null;
+                    if (lmsRow.final_grade !== undefined && lmsRow.final_grade !== '') {
+                        const gradeStr = lmsRow.final_grade.trim().toUpperCase();
+                        if (gradeStr === 'INC' || isNaN(Number(gradeStr))) {
+                            finalGrade = gradeStr; 
+                        } else {
+                            finalGrade = Number(gradeStr); 
+                        }
+                    }
+
+                    let balance = 0.00;
+                    if (accRow.account_balance !== undefined && accRow.account_balance !== '') {
+                        balance = Number(accRow.account_balance) || 0.00;
+                    }
+
+                    return {
+                        studentId: parseInt(sisRow.student_id),
+                        studentName: sisRow.student_name ? toTitleCase(sisRow.student_name.trim()) : '',
+                        program: fullProgram,
+                        emailAddress: sisRow.email ? sisRow.email.trim().toLowerCase() : '',
+                        courseCode: lmsRow.course_code ? lmsRow.course_code.trim().toUpperCase() : null,
+                        finalGrade: finalGrade,
+                        completionStatus: lmsRow.completion_status ? 
+                            (lmsRow.completion_status.trim().charAt(0).toUpperCase() + lmsRow.completion_status.trim().slice(1).toLowerCase()) : null,
+                        outstandingBalance: balance,
+                        currency: accRow.currency ? accRow.currency.trim().toUpperCase() : 'PHP'
+                    };
+                });
+
+                // LOAD
+                document.getElementById('jsonOutput').textContent = JSON.stringify(finalJSON, null, 4);
+
+            } catch (error) {
+                console.error(error);
+                alert("An error occurred while processing the files.");
+            }
+        }
+    </script>
+</body>
+</html>
