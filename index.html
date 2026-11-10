@@ -99,21 +99,17 @@
     <h4>1. Upload Source CSV Files</h4>
 
     <div class="form-group">
-        <label>Select all 3 CSV files at once (SIS, LMS, Accounting):</label>
+        <label>Select CSV files:</label>
         <input type="file" id="csvFiles" accept=".csv" multiple />
-        <div class="note">Hold Ctrl (or Cmd) to select multiple files, or drag and drop them together.</div>
     </div>
 
     <button onclick="runETL()">RUN ETL</button>
 
-    <div class="helper-text">Upload the three CSV files and click RUN ETL.</div>
-
     <h4>2. JSON Output</h4>
 
-    <pre id="jsonOutput">Upload the CSV files and click RUN ETL.</pre>
+    <pre id="jsonOutput"></pre>
 
     <script>
-        // Helper to parse CSV with quotes
         function parseCSV(text) {
             const rows = [];
             let currentRow = [];
@@ -177,13 +173,11 @@
             try {
                 let sisData = [], lmsData = [], accData = [];
 
-                // Loop through the uploaded files and identify them by filename
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
                     const text = await readFileAsync(file);
                     const parsed = csvToObjects(text);
                     
-                    // Detect which file it is based on the filename
                     const name = file.name.toLowerCase();
                     
                     if (name.includes('sis') || name.includes('source_a')) {
@@ -193,7 +187,6 @@
                     } else if (name.includes('acc') || name.includes('source_c') || name.includes('accounting')) {
                         accData = parsed;
                     } else {
-                        // Fallback: guess by columns if filename is weird
                         if (parsed.length > 0) {
                             if ('student_name' in parsed[0]) sisData = parsed;
                             else if ('final_grade' in parsed[0]) lmsData = parsed;
@@ -202,7 +195,6 @@
                     }
                 }
 
-                // Validate that we found all 3
                 if (sisData.length === 0 || lmsData.length === 0 || accData.length === 0) {
                     alert("Could not identify all 3 files. Please make sure the filenames contain 'SIS', 'LMS', and 'Accounting' (or 'Source A', 'Source B', 'Source C').");
                     return;
@@ -214,7 +206,6 @@
                     "BSIS": "Bachelor of Science in Information Systems"
                 };
 
-                // TRANSFORM & JOIN
                 const finalJSON = sisData.map(sisRow => {
                     const studentIdStr = String(parseInt(sisRow.student_id));
                     
@@ -253,7 +244,6 @@
                     };
                 });
 
-                // LOAD
                 document.getElementById('jsonOutput').textContent = JSON.stringify(finalJSON, null, 4);
 
             } catch (error) {
